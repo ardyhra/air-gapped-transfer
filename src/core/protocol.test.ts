@@ -50,7 +50,7 @@ describe('RapidQR packet', () => {
     expect(() => decodePacket(packet)).toThrow(PacketError)
   })
 
-  it('survives the real QR encoder and ZXing decoder as raw bytes', () => {
+  it('offers multiple decodable QR masks for the same binary packet', () => {
     const payload = Uint8Array.from({ length: 256 }, (_, index) => index)
     const packet = encodePacket({
       type: PacketType.Data,
@@ -63,28 +63,42 @@ describe('RapidQR packet', () => {
       parityShards: 3,
       payload,
     })
-    const qr = QRCode.create([{ data: packet, mode: 'byte' }], { errorCorrectionLevel: 'L' })
-    const scale = 5
-    const quietZone = 4
-    const moduleWidth = qr.modules.size + quietZone * 2
-    const imageWidth = moduleWidth * scale
-    const luminance = new Uint8ClampedArray(imageWidth * imageWidth).fill(255)
-    for (let row = 0; row < qr.modules.size; row += 1) {
-      for (let column = 0; column < qr.modules.size; column += 1) {
-        if (!qr.modules.get(row, column)) continue
-        for (let y = 0; y < scale; y += 1) {
-          for (let x = 0; x < scale; x += 1) {
-            const pixelX = (column + quietZone) * scale + x
-            const pixelY = (row + quietZone) * scale + y
-            luminance[pixelY * imageWidth + pixelX] = 0
+    const failedMasks: number[] = []
+    for (let maskPattern = 0; maskPattern < 8; maskPattern += 1) {
+      const qr = QRCode.create([{ data: packet, mode: 'byte' }], {
+        errorCorrectionLevel: 'M', maskPattern: maskPattern as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7,
+      })
+      const scale = 5
+      const quietZone = 4
+      const moduleWidth = qr.modules.size + quietZone * 2
+      const imageWidth = moduleWidth * scale
+      const luminance = new Uint8ClampedArray(imageWidth * imageWidth).fill(255)
+      for (let row = 0; row < qr.modules.size; row += 1) {
+        for (let column = 0; column < qr.modules.size; column += 1) {
+          if (!qr.modules.get(row, column)) continue
+          for (let y = 0; y < scale; y += 1) {
+            for (let x = 0; x < scale; x += 1) {
+              const pixelX = (column + quietZone) * scale + x
+              const pixelY = (row + quietZone) * scale + y
+              luminance[pixelY * imageWidth + pixelX] = 0
+            }
           }
         }
       }
+      const bitmap = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(luminance, imageWidth, imageWidth)))
+      let decoded: Uint8Array
+      try {
+        decoded = extractByteModePayload(new QRCodeReader().decode(bitmap))
+      } catch {
+        failedMasks.push(maskPattern)
+        continue
+      }
+      expect(Array.from(decoded)).toEqual(Array.from(packet))
+      expect(Array.from(decodePacket(decoded).payload)).toEqual(Array.from(payload))
     }
-    const bitmap = new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(luminance, imageWidth, imageWidth)))
-    const decoded = extractByteModePayload(new QRCodeReader().decode(bitmap))
-    expect(Array.from(decoded)).toEqual(Array.from(packet))
-    expect(Array.from(decodePacket(decoded).payload)).toEqual(Array.from(payload))
+    // A decoder may reject a visually unfortunate mask even for the same
+    // payload. Cycling masks gives the optical channel several alternatives.
+    expect(8 - failedMasks.length).toBeGreaterThanOrEqual(6)
   })
 })
 

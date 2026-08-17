@@ -1,5 +1,6 @@
 export const PROTOCOL_VERSION = 2
-export const DEFAULT_CHUNK_SIZE = 700
+// Kept deliberately below QR capacity to produce larger, camera-friendly modules.
+export const DEFAULT_CHUNK_SIZE = 360
 export const DEFAULT_DATA_SHARDS = 10
 export const DEFAULT_PARITY_SHARDS = 3
 

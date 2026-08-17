@@ -13,6 +13,8 @@ No transfer backend, WebSocket, Bluetooth, Wi-Fi link, or device pairing is used
 - SHA-256 verification of the reconstructed file
 - Reed–Solomon erasure recovery (10 data + 3 recovery frames per full group)
 - Interleaved shard scheduling that spreads burst loss across recovery groups
+- Camera-safe 360-byte QR payloads with medium QR error correction
+- Eight rotating QR mask patterns so repeatedly missed packets change visually
 - `requestAnimationFrame` display clock with render-aware adaptive FPS
 - Sender preparation in a Web Worker using transferable `ArrayBuffer` objects
 - Receiver packet persistence in IndexedDB
@@ -45,6 +47,8 @@ For a real transfer:
 The receiver can join midway through a cycle because metadata is repeated every 24 data/recovery frames and the complete stream loops indefinitely.
 
 Frames are scheduled by shard round across all Reed–Solomon groups. This prevents a short focus or motion-blur event from wiping out several adjacent shards in one group. Lowering FPS can improve decode reliability, but it also lengthens the time before a missed packet reappears in the next carousel cycle.
+
+The sender rotates through all eight QR mask patterns on successive carousel cycles. A packet that produces a camera-unfriendly pattern therefore gets a different matrix the next time it appears, while its binary protocol payload remains unchanged.
 
 ## Quality checks
 

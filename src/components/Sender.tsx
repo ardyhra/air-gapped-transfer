@@ -1,5 +1,5 @@
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import QRCode from 'qrcode'
+import QRCode, { QRCodeMaskPattern } from 'qrcode'
 import { FileArchive, Gauge, Maximize2, Pause, Play, RotateCcw, ShieldCheck, UploadCloud } from 'lucide-react'
 import { PrepareError, PrepareResponse, TransferMetadata } from '../core/types'
 import { buildInterleavedSequence } from '../core/schedule'
@@ -26,6 +26,7 @@ export function Sender({ onBack }: SenderProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const animationRef = useRef(0)
   const cursorRef = useRef(0)
+  const cycleRef = useRef(0)
   const lastFrameRef = useRef(0)
   const fpsSampleRef = useRef({ startedAt: 0, frames: 0 })
 
@@ -33,11 +34,11 @@ export function Sender({ onBack }: SenderProps) {
     return buildInterleavedSequence(packets)
   }, [packets])
 
-  const renderPacket = useCallback(async (packet: Uint8Array) => {
+  const renderPacket = useCallback(async (packet: Uint8Array, maskPattern: QRCodeMaskPattern) => {
     if (!canvasRef.current) return
     const startedAt = performance.now()
     await QRCode.toCanvas(canvasRef.current, [{ data: packet, mode: 'byte' }], {
-      errorCorrectionLevel: 'L', margin: 2, width: 560,
+      errorCorrectionLevel: 'M', maskPattern, margin: 4, width: 560,
       color: { dark: '#07110fff', light: '#ffffffff' },
     })
     const renderTime = Math.max(1, performance.now() - startedAt)
@@ -46,7 +47,7 @@ export function Sender({ onBack }: SenderProps) {
   }, [targetFps])
 
   useEffect(() => {
-    if ((state === 'ready' || state === 'paused') && displaySequence[0]) void renderPacket(displaySequence[0])
+    if ((state === 'ready' || state === 'paused') && displaySequence[0]) void renderPacket(displaySequence[0], 0)
   }, [displaySequence, renderPacket, state])
 
   useEffect(() => {
@@ -57,9 +58,13 @@ export function Sender({ onBack }: SenderProps) {
       const interval = 1000 / effectiveFps
       if (lastFrameRef.current === 0 || timestamp - lastFrameRef.current >= interval) {
         const cursor = cursorRef.current
-        void renderPacket(displaySequence[cursor])
+        const maskPattern = (cycleRef.current % 8) as QRCodeMaskPattern
+        void renderPacket(displaySequence[cursor], maskPattern)
         const next = (cursor + 1) % displaySequence.length
-        if (next === 0) setCycle((value) => value + 1)
+        if (next === 0) {
+          cycleRef.current += 1
+          setCycle(cycleRef.current)
+        }
         cursorRef.current = next
         setFrameNumber(next)
         lastFrameRef.current = timestamp - ((timestamp - lastFrameRef.current) % interval)
@@ -100,6 +105,7 @@ export function Sender({ onBack }: SenderProps) {
       setRecoveryPacketCount(response.recoveryPacketCount)
       setEncodedBytes(response.encodedBytes)
       cursorRef.current = 0
+      cycleRef.current = 0
       setFrameNumber(0)
       setCycle(0)
       setState('ready')
@@ -119,7 +125,7 @@ export function Sender({ onBack }: SenderProps) {
     if (selected) void prepareFile(selected)
   }
   const reset = () => {
-    setState('empty'); setFile(null); setPackets([]); setMetadata(null); setError(''); setCycle(0)
+    setState('empty'); setFile(null); setPackets([]); setMetadata(null); setError(''); setCycle(0); cycleRef.current = 0
   }
   const toggleFullscreen = () => canvasRef.current?.closest('.qr-stage')?.requestFullscreen()
 
@@ -145,7 +151,7 @@ export function Sender({ onBack }: SenderProps) {
   }
 
   const progress = displaySequence.length ? (frameNumber / displaySequence.length) * 100 : 0
-  const throughput = effectiveFps * 700
+  const throughput = effectiveFps * (metadata?.chunkSize ?? 0)
   return (
     <main className="workspace sender-workspace">
       <div className="workspace-topline"><button className="back-link" onClick={reset}>← Choose another file</button><span className="live-badge"><i /> Optical stream ready</span></div>
@@ -189,7 +195,7 @@ export function Sender({ onBack }: SenderProps) {
             <div><dt>Error recovery</dt><dd>{metadata?.dataShards}+{metadata?.parityShards} Reed–Solomon</dd></div>
             <div><dt>Encoded stream</dt><dd>{formatBytes(encodedBytes)}</dd></div>
           </dl>
-          <p className="sender-tip">Frames are interleaved across recovery groups so brief camera loss stays recoverable. Keep the QR fully visible and turn display brightness up.</p>
+          <p className="sender-tip">Camera-safe QR density and a rotating mask give every missed packet a different visual pattern on the next cycle. Keep the full white border visible.</p>
         </aside>
       </section>
     </main>
