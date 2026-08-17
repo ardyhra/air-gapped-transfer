@@ -8,6 +8,7 @@ import { assembleTransfer, prepareTransfer } from './transfer'
 import { PacketType } from './types'
 import { extractByteModePayload } from './qrTransport'
 import { sha256, sha256Fallback } from './hash'
+import { buildInterleavedSequence } from './schedule'
 
 describe('CRC32', () => {
   it('matches the standard check value', () => {
@@ -117,5 +118,20 @@ describe('file transfer', () => {
     const result = assembleTransfer(transfer.metadata, kept)
     expect(result.recoveredChunks).toBeGreaterThan(0)
     expect(Array.from(result.bytes)).toEqual(Array.from(input))
+  })
+
+  it('interleaves neighboring frames across Reed–Solomon groups', async () => {
+    const input = Uint8Array.from({ length: 4_000 }, (_, index) => index & 0xff)
+    const transfer = await prepareTransfer(
+      input,
+      { fileName: 'interleaved.bin', mimeType: 'application/octet-stream', lastModified: 1 },
+      { chunkSize: 100, dataShards: 5, parityShards: 2 },
+    )
+    const sequence = buildInterleavedSequence(transfer.packets, 10_000)
+      .map(decodePacket)
+      .filter((packet) => packet.type !== PacketType.Metadata)
+    expect(sequence.slice(0, 8).map((packet) => packet.shardIndex)).toEqual(Array(8).fill(0))
+    expect(sequence.slice(0, 8).map((packet) => packet.groupIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
+    expect(sequence.slice(8, 16).map((packet) => packet.shardIndex)).toEqual(Array(8).fill(1))
   })
 })

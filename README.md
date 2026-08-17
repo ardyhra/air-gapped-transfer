@@ -12,6 +12,7 @@ No transfer backend, WebSocket, Bluetooth, Wi-Fi link, or device pairing is used
 - Duplicate rejection and missing-frame visibility
 - SHA-256 verification of the reconstructed file
 - Reed–Solomon erasure recovery (10 data + 3 recovery frames per full group)
+- Interleaved shard scheduling that spreads burst loss across recovery groups
 - `requestAnimationFrame` display clock with render-aware adaptive FPS
 - Sender preparation in a Web Worker using transferable `ArrayBuffer` objects
 - Receiver packet persistence in IndexedDB
@@ -42,6 +43,8 @@ For a real transfer:
 4. The receiver completes once every group has enough data or recovery shards, then checks SHA-256 before enabling download.
 
 The receiver can join midway through a cycle because metadata is repeated every 24 data/recovery frames and the complete stream loops indefinitely.
+
+Frames are scheduled by shard round across all Reed–Solomon groups. This prevents a short focus or motion-blur event from wiping out several adjacent shards in one group. Lowering FPS can improve decode reliability, but it also lengthens the time before a missed packet reappears in the next carousel cycle.
 
 ## Quality checks
 

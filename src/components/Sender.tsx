@@ -2,6 +2,7 @@ import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useSta
 import QRCode from 'qrcode'
 import { FileArchive, Gauge, Maximize2, Pause, Play, RotateCcw, ShieldCheck, UploadCloud } from 'lucide-react'
 import { PrepareError, PrepareResponse, TransferMetadata } from '../core/types'
+import { buildInterleavedSequence } from '../core/schedule'
 import { formatBytes, formatDuration, truncateHash } from '../utils/format'
 
 interface SenderProps { onBack: () => void }
@@ -29,13 +30,7 @@ export function Sender({ onBack }: SenderProps) {
   const fpsSampleRef = useRef({ startedAt: 0, frames: 0 })
 
   const displaySequence = useMemo(() => {
-    if (packets.length < 2) return packets
-    const sequence: Uint8Array[] = []
-    packets.slice(1).forEach((packet, index) => {
-      if (index % 24 === 0) sequence.push(packets[0])
-      sequence.push(packet)
-    })
-    return sequence
+    return buildInterleavedSequence(packets)
   }, [packets])
 
   const renderPacket = useCallback(async (packet: Uint8Array) => {
@@ -194,7 +189,7 @@ export function Sender({ onBack }: SenderProps) {
             <div><dt>Error recovery</dt><dd>{metadata?.dataShards}+{metadata?.parityShards} Reed–Solomon</dd></div>
             <div><dt>Encoded stream</dt><dd>{formatBytes(encodedBytes)}</dd></div>
           </dl>
-          <p className="sender-tip">Keep this QR fully visible and turn your display brightness up. The receiver may join at any point in the loop.</p>
+          <p className="sender-tip">Frames are interleaved across recovery groups so brief camera loss stays recoverable. Keep the QR fully visible and turn display brightness up.</p>
         </aside>
       </section>
     </main>
