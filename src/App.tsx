@@ -35,7 +35,7 @@ export default function App() {
         {mode === 'send' && <Sender onBack={() => setMode('home')} />}
         {mode === 'receive' && <Receiver onBack={() => setMode('home')} />}
       </Suspense>
-      <footer><span>RapidQR Protocol v2</span><span>CRC32 · SHA-256 · Reed–Solomon</span><span>100% client-side</span></footer>
+      <footer><span>RapidQR Protocol v3</span><span>CRC32 · SHA-256 · LT fountain</span><span>100% client-side</span></footer>
       {needRefresh && <button className="update-toast" onClick={() => void updateServiceWorker(true)}>A new version is ready · Update</button>}
     </div>
   )

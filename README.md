@@ -1,20 +1,20 @@
 # RapidQR
 
-RapidQR is a client-side progressive web app for air-gapped, screen-to-camera file transfer. A sender converts a file into a repeating sequence of binary QR frames. A receiver scans those frames, rejects damaged or duplicate packets, recovers limited frame loss, verifies the complete file, and offers it for download.
+RapidQR is a client-side progressive web app for air-gapped, screen-to-camera file transfer. A sender converts a file into a rateless stream of binary QR fountain symbols. A receiver scans any sufficient set of symbols, solves the original source blocks, verifies the complete file, and offers it for download.
 
 No transfer backend, WebSocket, Bluetooth, Wi-Fi link, or device pairing is used.
 
-## V2 features
+## V3 features
 
-- Binary RapidQR Protocol v2 packets (no Base64 transport overhead)
+- Binary RapidQR Protocol v3 packets (no Base64 transport overhead)
 - Sequence and transfer identifiers
 - CRC32 validation on every optical frame
-- Duplicate rejection and missing-frame visibility
+- Duplicate rejection and live decoder telemetry
 - SHA-256 verification of the reconstructed file
-- Reed–Solomon erasure recovery (10 data + 3 recovery frames per full group)
-- Interleaved shard scheduling that spreads burst loss across recovery groups
-- Camera-safe 360-byte QR payloads with medium QR error correction
-- Eight rotating QR mask patterns so repeatedly missed packets change visually
+- Systematic LT fountain code followed by an unlimited stream of new recovery equations
+- Reliable, Balanced, and Turbo optical profiles
+- Unique scan FPS, solve rate, throughput, ETA, pending-equation, and stalled-progress telemetry
+- Camera-safe QR payload and error-correction settings per profile
 - `requestAnimationFrame` display clock with render-aware adaptive FPS
 - Sender preparation in a Web Worker using transferable `ArrayBuffer` objects
 - Receiver packet persistence in IndexedDB
@@ -42,13 +42,9 @@ For a real transfer:
 1. Open **Send** on the computer, choose a file, and start the QR stream.
 2. Open the installed app on the phone and choose **Receive**.
 3. Start the camera and keep the entire QR code inside the guide.
-4. The receiver completes once every group has enough data or recovery shards, then checks SHA-256 before enabling download.
+4. The receiver completes after its fountain graph solves every source block, then checks SHA-256 before enabling download.
 
-The receiver can join midway through a cycle because metadata is repeated every 24 data/recovery frames and the complete stream loops indefinitely.
-
-Frames are scheduled by shard round across all Reed–Solomon groups. This prevents a short focus or motion-blur event from wiping out several adjacent shards in one group. Lowering FPS can improve decode reliability, but it also lengthens the time before a missed packet reappears in the next carousel cycle.
-
-The sender rotates through all eight QR mask patterns on successive carousel cycles. A packet that produces a camera-unfriendly pattern therefore gets a different matrix the next time it appears, while its binary protocol payload remains unchanged.
+The receiver can join after transmission begins because metadata repeats every 25 displayed frames. The first generation is systematic; subsequent symbols contain deterministic XOR combinations selected by a robust soliton distribution. Every recovery symbol is new, so the receiver never waits for one specific QR to reappear.
 
 ## Quality checks
 
@@ -64,7 +60,7 @@ The included `.github/workflows/deploy-pages.yml` workflow tests, builds, and de
 
 After pushing the project, open the repository's **Settings → Pages** and set **Source** to **GitHub Actions**. The deployed URL will be `https://<username>.github.io/<repository>/` unless the repository itself is named `<username>.github.io`.
 
-The protocol tests cover the standard CRC32 vector, binary packet round-tripping and corruption rejection, a real QR encoder-to-ZXing byte-mode round trip, three-shard Reed–Solomon recovery, and end-to-end reconstruction after dropped data frames.
+The protocol tests cover CRC32, SHA-256 fallback, binary packet validation, real QR-to-ZXing byte-mode decoding, legacy Reed–Solomon recovery, deterministic fountain indexes, and end-to-end fountain reconstruction with 35% simulated optical loss.
 
 ## Protocol frame
 
@@ -87,11 +83,11 @@ Each QR contains a raw byte-mode packet:
 | Payload | variable |
 | CRC32 | 4 bytes |
 
-Metadata carries the filename, MIME type, original size, chunk/FEC parameters, and SHA-256 digest. File content stays binary throughout preparation, QR encoding, decoding, and reconstruction.
+For fountain packets, `group index` carries the monotonically increasing symbol ID and `shard index` records its degree. Sender and receiver independently derive identical source-block indexes from the transfer ID and symbol ID. Metadata carries the filename, MIME type, original size, profile, fountain parameters, and SHA-256 digest.
 
 ## Scope and limitations
 
-- V2 is optimized for demonstrable, reliable transfer rather than competing with radio networking. Files up to roughly 25 MB are the practical target.
-- Reed–Solomon can recover up to three missing shards in each full group; the carousel supplies additional chances when loss exceeds that threshold.
+- V3 is optimized for demonstrable, reliable transfer rather than competing with radio networking. Start with small files and benchmark the actual camera throughput before increasing size.
+- LT decoding is probabilistic: solve progress may arrive in bursts, but continued scanning always supplies new equations rather than repeating a fixed carousel.
 - Optical reliability depends on display brightness, camera focus, distance, motion blur, and QR density. Lower the sender FPS when scanning is unreliable.
 - The application needs network access only for its first load/install. Once cached, transfer and reconstruction are local and networkless.

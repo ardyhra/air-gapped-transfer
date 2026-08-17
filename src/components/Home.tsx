@@ -45,7 +45,7 @@ export function Home({ onChoose }: HomeProps) {
       <section className="trust-row">
         <div><LockKeyhole /><span><strong>Private by design</strong>Files never leave your devices.</span></div>
         <div><RadioTower /><span><strong>Networkless</strong>Only photons cross the air gap.</span></div>
-        <div><Check /><span><strong>Loss tolerant</strong>CRC32 + Reed–Solomon recovery.</span></div>
+        <div><Check /><span><strong>Loss tolerant</strong>CRC32 + rateless fountain recovery.</span></div>
       </section>
     </main>
   )

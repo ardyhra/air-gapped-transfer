@@ -10,6 +10,8 @@ import {
   PreparedTransfer,
   TransferMetadata,
 } from './types'
+import { FOUNTAIN_C, FOUNTAIN_DELTA } from './fountain'
+import { TransmissionProfile } from './profiles'
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -22,7 +24,8 @@ export interface FileDescriptor {
 
 function randomTransferId(): number {
   const id = new Uint32Array(1)
-  crypto.getRandomValues(id)
+  if (globalThis.crypto?.getRandomValues) globalThis.crypto.getRandomValues(id)
+  else id[0] = Math.floor(Math.random() * 0x100000000)
   return id[0]
 }
 
@@ -38,7 +41,7 @@ export async function prepareTransfer(
   const transferId = randomTransferId()
   const metadata: TransferMetadata = {
     protocol: 'RapidQR',
-    version: 2,
+    version: 3,
     transferId,
     fileName: descriptor.fileName,
     mimeType: descriptor.mimeType || 'application/octet-stream',
@@ -49,6 +52,10 @@ export async function prepareTransfer(
     totalDataChunks,
     dataShards: configuredDataShards,
     parityShards,
+    fecMode: 'reed-solomon',
+    profileId: 'balanced',
+    fountainC: FOUNTAIN_C,
+    fountainDelta: FOUNTAIN_DELTA,
     createdAt: new Date().toISOString(),
   }
 
@@ -121,12 +128,71 @@ export async function prepareTransfer(
   }
 }
 
+export interface PreparedFountainTransfer {
+  metadata: TransferMetadata
+  metadataPacket: Uint8Array
+  sourceBlocks: Uint8Array[]
+  encodedBytes: number
+}
+
+export async function prepareFountainTransfer(
+  source: Uint8Array,
+  descriptor: FileDescriptor,
+  profile: TransmissionProfile,
+): Promise<PreparedFountainTransfer> {
+  const chunkSize = profile.chunkSize
+  const totalDataChunks = Math.max(1, Math.ceil(source.byteLength / chunkSize))
+  const transferId = randomTransferId()
+  const metadata: TransferMetadata = {
+    protocol: 'RapidQR',
+    version: 3,
+    transferId,
+    fileName: descriptor.fileName,
+    mimeType: descriptor.mimeType || 'application/octet-stream',
+    fileSize: source.byteLength,
+    lastModified: descriptor.lastModified,
+    sha256: await sha256(source),
+    chunkSize,
+    totalDataChunks,
+    dataShards: 0,
+    parityShards: 0,
+    fecMode: 'fountain',
+    profileId: profile.id,
+    fountainC: FOUNTAIN_C,
+    fountainDelta: FOUNTAIN_DELTA,
+    createdAt: new Date().toISOString(),
+  }
+  const sourceBlocks = Array.from({ length: totalDataChunks }, (_, index) => {
+    const block = new Uint8Array(chunkSize)
+    const start = index * chunkSize
+    block.set(source.subarray(start, Math.min(start + chunkSize, source.byteLength)))
+    return block
+  })
+  const metadataPacket = encodePacket({
+    type: PacketType.Metadata,
+    transferId,
+    packetIndex: 0,
+    totalDataChunks,
+    groupIndex: 0,
+    shardIndex: 0,
+    dataShards: 0,
+    parityShards: 0,
+    payload: encoder.encode(JSON.stringify(metadata)),
+  })
+  return {
+    metadata,
+    metadataPacket,
+    sourceBlocks,
+    encodedBytes: sourceBlocks.reduce((total, block) => total + block.byteLength, metadataPacket.byteLength),
+  }
+}
+
 export function readMetadata(packet: Packet): TransferMetadata {
   if (packet.type !== PacketType.Metadata) throw new Error('Packet does not contain metadata')
   const metadata = JSON.parse(decoder.decode(packet.payload)) as TransferMetadata
   if (
     metadata.protocol !== 'RapidQR' ||
-    metadata.version !== 2 ||
+    metadata.version !== 3 ||
     metadata.transferId !== packet.transferId ||
     metadata.totalDataChunks !== packet.totalDataChunks
   ) {

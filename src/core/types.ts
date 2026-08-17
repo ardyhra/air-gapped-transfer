@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 2
+export const PROTOCOL_VERSION = 3
 // Kept deliberately below QR capacity to produce larger, camera-friendly modules.
 export const DEFAULT_CHUNK_SIZE = 360
 export const DEFAULT_DATA_SHARDS = 10
@@ -8,11 +8,12 @@ export enum PacketType {
   Metadata = 1,
   Data = 2,
   Parity = 3,
+  Fountain = 4,
 }
 
 export interface TransferMetadata {
   protocol: 'RapidQR'
-  version: 2
+  version: 3
   transferId: number
   fileName: string
   mimeType: string
@@ -23,6 +24,10 @@ export interface TransferMetadata {
   totalDataChunks: number
   dataShards: number
   parityShards: number
+  fecMode: 'reed-solomon' | 'fountain'
+  profileId: 'reliable' | 'balanced' | 'turbo'
+  fountainC: number
+  fountainDelta: number
   createdAt: string
 }
 
@@ -54,14 +59,15 @@ export interface PrepareRequest {
   chunkSize?: number
   dataShards?: number
   parityShards?: number
+  profileId?: TransferMetadata['profileId']
 }
 
 export interface PrepareResponse {
   ok: true
   metadata: TransferMetadata
-  packets: ArrayBuffer[]
+  metadataPacket: ArrayBuffer
+  sourceBlocks: ArrayBuffer[]
   dataPacketCount: number
-  recoveryPacketCount: number
   encodedBytes: number
 }
 

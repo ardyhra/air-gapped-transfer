@@ -1,4 +1,4 @@
-const DATABASE_NAME = 'rapidqr-v2'
+const DATABASE_NAME = 'rapidqr-v3'
 const STORE_NAME = 'packets'
 
 function openDatabase(): Promise<IDBDatabase> {

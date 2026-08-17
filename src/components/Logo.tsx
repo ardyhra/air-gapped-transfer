@@ -5,7 +5,7 @@ export function Logo() {
         <i /><i /><i /><i />
       </span>
       <span>RapidQR</span>
-      <span className="version">V2</span>
+      <span className="version">V3</span>
     </div>
   )
 }

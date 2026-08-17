@@ -40,7 +40,7 @@ export function decodePacket(encoded: Uint8Array): Packet {
   const actualCrc = crc32(encoded.subarray(0, -CHECKSUM_SIZE))
   if (storedCrc !== actualCrc) throw new PacketError('CRC mismatch')
   const type = view.getUint8(3)
-  if (![PacketType.Metadata, PacketType.Data, PacketType.Parity].includes(type)) {
+  if (![PacketType.Metadata, PacketType.Data, PacketType.Parity, PacketType.Fountain].includes(type)) {
     throw new PacketError('Unknown packet type')
   }
   return {

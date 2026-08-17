@@ -9,6 +9,9 @@ import { PacketType } from './types'
 import { extractByteModePayload } from './qrTransport'
 import { sha256, sha256Fallback } from './hash'
 import { buildInterleavedSequence } from './schedule'
+import { createFountainSymbol, FountainDecoder, fountainIndexes } from './fountain'
+import { prepareFountainTransfer } from './transfer'
+import { getProfile } from './profiles'
 
 describe('CRC32', () => {
   it('matches the standard check value', () => {
@@ -147,5 +150,39 @@ describe('file transfer', () => {
     expect(sequence.slice(0, 8).map((packet) => packet.shardIndex)).toEqual(Array(8).fill(0))
     expect(sequence.slice(0, 8).map((packet) => packet.groupIndex)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
     expect(sequence.slice(8, 16).map((packet) => packet.shardIndex)).toEqual(Array(8).fill(1))
+  })
+})
+
+describe('LT fountain codec', () => {
+  it('selects deterministic systematic and recovery indexes', () => {
+    expect(fountainIndexes(123, 4, 10)).toEqual([4])
+    expect(fountainIndexes(123, 15, 10)).toEqual(fountainIndexes(123, 15, 10))
+  })
+
+  it('recovers a file from a lossy rateless symbol stream', async () => {
+    const input = Uint8Array.from({ length: 44_123 }, (_, index) => (index * 31 + 7) & 0xff)
+    const transfer = await prepareFountainTransfer(
+      input,
+      { fileName: 'fountain.bin', mimeType: 'application/octet-stream', lastModified: 1 },
+      getProfile('reliable'),
+    )
+    const decoder = new FountainDecoder(
+      transfer.metadata.transferId,
+      transfer.metadata.totalDataChunks,
+      transfer.metadata.chunkSize,
+      transfer.metadata.fountainC,
+      transfer.metadata.fountainDelta,
+    )
+    const maximumSymbols = transfer.metadata.totalDataChunks * 4
+    let acceptedSymbols = 0
+    for (let symbolId = 0; symbolId < maximumSymbols && !decoder.complete; symbolId += 1) {
+      // Simulate deterministic 35% optical loss, including systematic symbols.
+      if ((symbolId * 17 + 3) % 20 < 7) continue
+      decoder.addSymbol(symbolId, createFountainSymbol(transfer.sourceBlocks, transfer.metadata.transferId, symbolId))
+      acceptedSymbols += 1
+    }
+    expect(decoder.complete).toBe(true)
+    expect(acceptedSymbols).toBeLessThan(transfer.metadata.totalDataChunks * 2)
+    expect(Array.from(decoder.assemble(input.byteLength))).toEqual(Array.from(input))
   })
 })
